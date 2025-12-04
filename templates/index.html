@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Video Washer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎬 TikTok Video Washer</h1>
+            <p class="subtitle">Wash your videos & photos before uploading to reduce shadowban risk.</p>
+        </div>
+
+        <div class="upload-section">
+            <div class="upload-box" id="uploadBox">
+                <div class="upload-icon" id="uploadIcon">📁</div>
+                <p class="upload-text" id="uploadText">Drop your video or photo here or click to upload</p>
+                <div class="upload-loading" id="uploadLoading" style="display: none;">
+                    <div class="spinner"></div>
+                    <p class="loading-text">Uploading... <span id="uploadProgress">0%</span></p>
+                </div>
+                <input type="file" id="fileInput" accept=".mp4,.mov,.avi,.mkv,.webm,.jpg,.jpeg,.png" hidden>
+                <p class="file-types">Supports: MP4, MOV, AVI, MKV, WebM, JPG, PNG (Max 500MB)</p>
+            </div>
+        </div>
+
+        <div class="file-info" id="fileInfo" style="display: none;">
+            <div class="file-bar">
+                <span><strong>File Name:</strong> <span id="fileName"></span></span>
+                <span><strong>File Size:</strong> <span id="fileSize"></span></span>
+            </div>
+            <div class="success-banner" id="successBanner" style="display: none;">
+                <span class="checkmark">✓</span> File washed successfully!
+            </div>
+            <div class="wash-loading" id="washLoading" style="display: none;">
+                <div class="spinner" style="margin: 0 auto;"></div>
+                <p style="margin-top: 10px; font-weight: 600; color: #667eea; text-align: center;">⏳ Washing video... This should take 2-10 seconds</p>
+            </div>
+        </div>
+
+        <div class="metadata-comparison" id="metadataComparison" style="display: none;">
+            <h2>Metadata Comparison</h2>
+            <div class="comparison-container">
+                <div class="metadata-column before">
+                    <h3>❌ BEFORE (Original)</h3>
+                    <div class="metadata-list" id="metadataBefore"></div>
+                </div>
+                <div class="metadata-column after">
+                    <h3>✓ AFTER (Washed)</h3>
+                    <div class="metadata-list" id="metadataAfter"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button class="btn btn-wash" id="washBtn" style="display: none;">
+                <span class="btn-icon">🚀</span> Wash Video
+            </button>
+            <button class="btn btn-download" id="downloadBtn" style="display: none;">
+                <span class="btn-icon">⬇️</span> Download Washed File
+            </button>
+        </div>
+
+        <div class="important-section">
+            <hr>
+            <h3>Important:</h3>
+            <ul>
+                <li>Every video or photo you upload to TikTok must go through this washer</li>
+                <li>Reduces shadowban risk</li>
+                <li>Fast processing (2-10 seconds)</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
+
