@@ -350,5 +350,9 @@ def download_file(filename):
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
+    print(f"Starting Flask app on port {port}", file=sys.stderr)
+    print(f"Upload folder: {app.config['UPLOAD_FOLDER']}", file=sys.stderr)
+    print(f"Washed folder: {app.config['WASHED_FOLDER']}", file=sys.stderr)
+    print(f"Max content length: {app.config['MAX_CONTENT_LENGTH'] / 1024 / 1024} MB", file=sys.stderr)
     app.run(debug=False, host='0.0.0.0', port=port)
 
