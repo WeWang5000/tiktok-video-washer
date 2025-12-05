@@ -225,22 +225,59 @@ def upload_file():
             os.makedirs(upload_folder, exist_ok=True)
         
         # Get file size from stream (if available)
-        file.seek(0, 2)  # Seek to end
-        file_size_from_stream = file.tell()
-        file.seek(0)  # Reset to beginning
-        print(f"File size from stream: {file_size_from_stream} bytes ({file_size_from_stream / 1024 / 1024:.2f} MB)", file=sys.stderr)
-        
-        # Save file
-        print(f"Starting file save...", file=sys.stderr)
-        save_start = time.time()
         try:
-            file.save(upload_path)
+            file.seek(0, 2)  # Seek to end
+            file_size_from_stream = file.tell()
+            file.seek(0)  # Reset to beginning
+            print(f"File size from stream: {file_size_from_stream} bytes ({file_size_from_stream / 1024 / 1024:.2f} MB)", file=sys.stderr)
+        except Exception as seek_error:
+            print(f"WARNING: Could not determine file size from stream: {seek_error}", file=sys.stderr)
+            file_size_from_stream = 0
+        
+        # Save file with progress tracking
+        print(f"Starting file save to: {upload_path}", file=sys.stderr)
+        print(f"Upload folder exists: {os.path.exists(upload_folder)}", file=sys.stderr)
+        print(f"Upload folder writable: {os.access(upload_folder, os.W_OK)}", file=sys.stderr)
+        save_start = time.time()
+        
+        try:
+            # Use chunked writing for large files to track progress
+            chunk_size = 1024 * 1024  # 1MB chunks
+            bytes_written = 0
+            last_progress_time = time.time()
+            
+            with open(upload_path, 'wb') as f:
+                while True:
+                    chunk = file.read(chunk_size)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    bytes_written += len(chunk)
+                    
+                    # Log progress every 5 seconds
+                    current_time = time.time()
+                    if current_time - last_progress_time >= 5.0:
+                        elapsed = current_time - save_start
+                        progress_pct = (bytes_written / file_size_from_stream * 100) if file_size_from_stream > 0 else 0
+                        print(f"Save progress: {bytes_written / 1024 / 1024:.2f} MB ({progress_pct:.1f}%) in {elapsed:.1f}s", file=sys.stderr)
+                        last_progress_time = current_time
+            
             save_time = time.time() - save_start
             print(f"File save completed in {save_time:.2f}s", file=sys.stderr)
+            print(f"Total bytes written: {bytes_written} bytes ({bytes_written / 1024 / 1024:.2f} MB)", file=sys.stderr)
+            
         except Exception as save_error:
-            print(f"ERROR during file save: {save_error}", file=sys.stderr)
+            save_time = time.time() - save_start
+            print(f"ERROR during file save after {save_time:.2f}s: {save_error}", file=sys.stderr)
             import traceback
             traceback.print_exc(file=sys.stderr)
+            # Clean up partial file
+            if os.path.exists(upload_path):
+                try:
+                    os.remove(upload_path)
+                    print(f"Cleaned up partial file: {upload_path}", file=sys.stderr)
+                except:
+                    pass
             return jsonify({'error': f'Failed to save file: {str(save_error)}'}), 500
         
         # Verify file was saved
