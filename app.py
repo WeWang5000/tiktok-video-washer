@@ -23,6 +23,7 @@ app.config['WASHED_FOLDER'] = 'washed'
 # Create directories
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['WASHED_FOLDER'], exist_ok=True)
+print(f"App initialized - Upload folder: {app.config['UPLOAD_FOLDER']}, Washed folder: {app.config['WASHED_FOLDER']}", file=sys.stderr)
 
 ALLOWED_EXTENSIONS = {'mp4', 'mov', 'avi', 'mkv', 'webm', 'jpg', 'jpeg', 'png'}
 
@@ -180,35 +181,111 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
+    upload_start = time.time()
+    print(f"========================================", file=sys.stderr)
+    print(f"UPLOAD START - {time.strftime('%Y-%m-%d %H:%M:%S')}", file=sys.stderr)
+    print(f"Request method: {request.method}", file=sys.stderr)
+    print(f"Content-Type: {request.content_type}", file=sys.stderr)
+    print(f"Content-Length header: {request.headers.get('Content-Length', 'N/A')}", file=sys.stderr)
     
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-    
-    if not allowed_file(file.filename):
-        return jsonify({'error': 'File type not allowed'}), 400
-    
-    # Generate unique file ID
-    file_id = str(uuid.uuid4())
-    file_ext = file.filename.rsplit('.', 1)[1].lower()
-    filename = f"{file_id}.{file_ext}"
-    upload_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    
-    file.save(upload_path)
-    file_size = os.path.getsize(upload_path)
-    
-    # Get metadata before
-    metadata_before = get_metadata(upload_path)
-    
-    return jsonify({
-        'file_id': file_id,
-        'filename': filename,
-        'file_ext': file_ext,
-        'file_size': file_size,
-        'metadata_before': metadata_before
-    })
+    try:
+        # Check if file is in request
+        if 'file' not in request.files:
+            print(f"ERROR: No 'file' key in request.files", file=sys.stderr)
+            print(f"Available keys: {list(request.files.keys())}", file=sys.stderr)
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        print(f"File object received: {file}", file=sys.stderr)
+        print(f"File filename: {file.filename}", file=sys.stderr)
+        
+        if file.filename == '':
+            print(f"ERROR: Empty filename", file=sys.stderr)
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Check file extension
+        if not allowed_file(file.filename):
+            print(f"ERROR: File type not allowed: {file.filename}", file=sys.stderr)
+            return jsonify({'error': 'File type not allowed'}), 400
+        
+        # Generate unique file ID
+        file_id = str(uuid.uuid4())
+        file_ext = file.filename.rsplit('.', 1)[1].lower()
+        filename = f"{file_id}.{file_ext}"
+        upload_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        
+        print(f"File ID: {file_id}", file=sys.stderr)
+        print(f"File extension: {file_ext}", file=sys.stderr)
+        print(f"Upload path: {upload_path}", file=sys.stderr)
+        
+        # Check upload folder exists
+        upload_folder = app.config['UPLOAD_FOLDER']
+        if not os.path.exists(upload_folder):
+            print(f"Creating upload folder: {upload_folder}", file=sys.stderr)
+            os.makedirs(upload_folder, exist_ok=True)
+        
+        # Get file size from stream (if available)
+        file.seek(0, 2)  # Seek to end
+        file_size_from_stream = file.tell()
+        file.seek(0)  # Reset to beginning
+        print(f"File size from stream: {file_size_from_stream} bytes ({file_size_from_stream / 1024 / 1024:.2f} MB)", file=sys.stderr)
+        
+        # Save file
+        print(f"Starting file save...", file=sys.stderr)
+        save_start = time.time()
+        try:
+            file.save(upload_path)
+            save_time = time.time() - save_start
+            print(f"File save completed in {save_time:.2f}s", file=sys.stderr)
+        except Exception as save_error:
+            print(f"ERROR during file save: {save_error}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            return jsonify({'error': f'Failed to save file: {str(save_error)}'}), 500
+        
+        # Verify file was saved
+        if not os.path.exists(upload_path):
+            print(f"ERROR: File not found after save: {upload_path}", file=sys.stderr)
+            return jsonify({'error': 'File was not saved'}), 500
+        
+        file_size = os.path.getsize(upload_path)
+        print(f"Saved file size: {file_size} bytes ({file_size / 1024 / 1024:.2f} MB)", file=sys.stderr)
+        
+        if file_size == 0:
+            print(f"ERROR: Saved file is empty!", file=sys.stderr)
+            return jsonify({'error': 'Uploaded file is empty'}), 400
+        
+        # Get metadata before
+        print(f"Extracting metadata...", file=sys.stderr)
+        metadata_start = time.time()
+        metadata_before = get_metadata(upload_path)
+        metadata_time = time.time() - metadata_start
+        print(f"Metadata extraction completed in {metadata_time:.2f}s", file=sys.stderr)
+        print(f"Metadata fields found: {len(metadata_before)}", file=sys.stderr)
+        
+        total_time = time.time() - upload_start
+        print(f"UPLOAD SUCCESS - Total time: {total_time:.2f}s", file=sys.stderr)
+        print(f"========================================", file=sys.stderr)
+        
+        return jsonify({
+            'file_id': file_id,
+            'filename': filename,
+            'file_ext': file_ext,
+            'file_size': file_size,
+            'metadata_before': metadata_before
+        })
+        
+    except Exception as e:
+        total_time = time.time() - upload_start
+        print(f"========================================", file=sys.stderr)
+        print(f"UPLOAD ERROR after {total_time:.2f}s", file=sys.stderr)
+        print(f"Error type: {type(e).__name__}", file=sys.stderr)
+        print(f"Error message: {str(e)}", file=sys.stderr)
+        import traceback
+        print(f"Full traceback:", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        print(f"========================================", file=sys.stderr)
+        return jsonify({'error': f'Upload failed: {str(e)}'}), 500
 
 @app.route('/wash', methods=['POST'])
 def wash():
