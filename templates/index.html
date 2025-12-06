@@ -42,7 +42,15 @@
 
         <div class="metadata-comparison" id="metadataComparison" style="display: none;">
             <h2>Metadata Comparison</h2>
-            <div class="comparison-container">
+            <div class="metadata-lock" id="metadataLock" style="display: none;">
+                <p class="metadata-lock-text">Metadata details are hidden. Enter the access code to reveal them.</p>
+                <div class="metadata-lock-controls">
+                    <input type="password" id="metadataCodeInput" class="metadata-lock-input" placeholder="Enter access code">
+                    <button type="button" class="btn btn-unlock" id="metadataUnlockBtn">Unlock</button>
+                </div>
+                <p class="metadata-lock-error" id="metadataError" style="display: none;"></p>
+            </div>
+            <div class="comparison-container" id="metadataContent" style="display: none;">
                 <div class="metadata-column before">
                     <h3>❌ BEFORE (Original)</h3>
                     <div class="metadata-list" id="metadataBefore"></div>
@@ -63,6 +71,16 @@
             </button>
         </div>
 
+        <div class="process-overlay" id="processOverlay" style="display: none;">
+            <div class="process-card">
+                <div class="process-header">
+                    <h3 id="processTitle">Processing...</h3>
+                    <p id="processSubtitle">We’ll walk you through each step.</p>
+                </div>
+                <div class="process-steps" id="processSteps"></div>
+            </div>
+        </div>
+
         <div class="important-section">
             <hr>
             <h3>Important:</h3>
@@ -72,9 +90,15 @@
                 <li>Fast processing (2-10 seconds)</li>
             </ul>
         </div>
-    </div>
+        </div>
 
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+        <script>
+            window.metadataLockConfig = {
+                enabled: {{ 'true' if metadata_lock_enabled else 'false' }},
+                codeHash: {{ metadata_code_hash|tojson }}
+            };
+        </script>
+        <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>
 

@@ -14,11 +14,15 @@ from werkzeug.utils import secure_filename
 import uuid
 import sys
 import time
+import hashlib
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['WASHED_FOLDER'] = 'washed'
+
+_metadata_code_env = os.environ.get('METADATA_VIEW_CODE', 'washstack')
+METADATA_ACCESS_CODE_HASH = hashlib.sha256(_metadata_code_env.encode('utf-8')).hexdigest() if _metadata_code_env else ''
 
 # Create directories
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -177,7 +181,12 @@ def wash_image(input_path, output_path):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    metadata_lock_enabled = bool(METADATA_ACCESS_CODE_HASH)
+    return render_template(
+        'index.html',
+        metadata_lock_enabled=metadata_lock_enabled,
+        metadata_code_hash=METADATA_ACCESS_CODE_HASH
+    )
 
 @app.route('/upload', methods=['POST'])
 def upload_file():

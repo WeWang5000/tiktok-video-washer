@@ -1,6 +1,8 @@
 let currentFileId = null;
 let currentFileExt = null;
 let washedFilename = null;
+let pendingBeforeMetadata = null;
+let pendingAfterMetadata = null;
 
 const uploadBox = document.getElementById('uploadBox');
 const fileInput = document.getElementById('fileInput');
@@ -13,11 +15,75 @@ const downloadBtn = document.getElementById('downloadBtn');
 const metadataComparison = document.getElementById('metadataComparison');
 const metadataBefore = document.getElementById('metadataBefore');
 const metadataAfter = document.getElementById('metadataAfter');
+const metadataLock = document.getElementById('metadataLock');
+const metadataContent = document.getElementById('metadataContent');
+const metadataCodeInput = document.getElementById('metadataCodeInput');
+const metadataUnlockBtn = document.getElementById('metadataUnlockBtn');
+const metadataError = document.getElementById('metadataError');
 const uploadIcon = document.getElementById('uploadIcon');
 const uploadText = document.getElementById('uploadText');
 const uploadLoading = document.getElementById('uploadLoading');
 const uploadProgress = document.getElementById('uploadProgress');
 const washLoading = document.getElementById('washLoading');
+const processOverlay = document.getElementById('processOverlay');
+const processTitle = document.getElementById('processTitle');
+const processSubtitle = document.getElementById('processSubtitle');
+const processSteps = document.getElementById('processSteps');
+const metadataLockConfig = window.metadataLockConfig || { enabled: true, codeHash: '' };
+let metadataUnlocked = !metadataLockConfig.enabled || !metadataLockConfig.codeHash;
+let currentProcessType = null;
+
+const PROCESS_CONFIG = {
+    upload: {
+        title: 'Uploading & Scanning',
+        subtitle: 'We’re uploading securely and taking an exact metadata snapshot.',
+        steps: [
+            {
+                id: 'uploading',
+                title: 'Secure upload',
+                description: 'Sending your file with encrypted HTTPS.'
+            },
+            {
+                id: 'metadata',
+                title: 'Metadata snapshot',
+                description: 'Recording every field before changes.'
+            }
+        ]
+    },
+    wash: {
+        title: 'Washing Video',
+        subtitle: 'We remove the old metadata and write clean Apple-style tags.',
+        steps: [
+            {
+                id: 'prep',
+                title: 'Removing originals',
+                description: 'FFmpeg strips every existing tag instantly.'
+            },
+            {
+                id: 'rewrite',
+                title: 'Writing new identity',
+                description: 'ExifTool stamps fresh Apple/iPhone metadata.'
+            },
+            {
+                id: 'finalize',
+                title: 'Optimizing & sealing',
+                description: 'Fast-start enabled and file prepared for download.'
+            }
+        ]
+    }
+};
+
+if (metadataUnlockBtn) {
+    metadataUnlockBtn.addEventListener('click', handleMetadataUnlock);
+}
+
+if (metadataCodeInput) {
+    metadataCodeInput.addEventListener('keyup', (event) => {
+        if (event.key === 'Enter') {
+            handleMetadataUnlock();
+        }
+    });
+}
 
 // Upload box click
 uploadBox.addEventListener('click', () => fileInput.click());
@@ -59,6 +125,7 @@ async function handleFile(file) {
 
     // Show loading indicator immediately
     showUploadLoading();
+    startProcessOverlay('upload');
     
     // Force UI update
     if (uploadLoading) {
@@ -80,6 +147,7 @@ async function handleFile(file) {
         washBtn.style.display = 'none';
         downloadBtn.style.display = 'none';
         metadataComparison.style.display = 'none';
+        resetMetadataState();
         successBanner.style.display = 'none';
 
         // Use XMLHttpRequest for progress tracking
@@ -142,9 +210,17 @@ async function handleFile(file) {
         fileSize.textContent = formatFileSize(data.file_size);
         fileInfo.style.display = 'block';
 
-        // Display metadata before
-        displayMetadata(data.metadata_before, metadataBefore);
+        setProcessStepState('uploading', 'complete');
+        setProcessStepState('metadata', 'active');
+
+        pendingBeforeMetadata = data.metadata_before || {};
+        pendingAfterMetadata = null;
+        metadataAfter.innerHTML = '';
         metadataComparison.style.display = 'block';
+        updateMetadataVisibility();
+
+        setProcessStepState('metadata', 'complete');
+        completeProcessOverlay();
 
         // Show wash button
         washBtn.style.display = 'flex';
@@ -152,6 +228,7 @@ async function handleFile(file) {
 
     } catch (error) {
         hideUploadLoading();
+        hideProcessOverlay();
         alert('Error: ' + error.message);
     }
 }
@@ -207,6 +284,7 @@ washBtn.addEventListener('click', async () => {
     if (washLoading) {
         washLoading.style.display = 'flex';
     }
+    startProcessOverlay('wash');
 
     try {
         const startTime = Date.now();
@@ -236,6 +314,8 @@ washBtn.addEventListener('click', async () => {
         }
 
         const data = await response.json();
+        setProcessStepState('prep', 'complete');
+        setProcessStepState('rewrite', 'active');
         
         // Hide loading indicator
         if (washLoading) {
@@ -245,7 +325,10 @@ washBtn.addEventListener('click', async () => {
         washedFilename = data.washed_filename;
 
         // Display metadata after
-        displayMetadata(data.metadata_after, metadataAfter);
+        pendingAfterMetadata = data.metadata_after || {};
+        updateMetadataVisibility();
+        setProcessStepState('rewrite', 'complete');
+        setProcessStepState('finalize', 'active');
 
         // Update file size
         fileSize.textContent = formatFileSize(data.file_size);
@@ -259,6 +342,8 @@ washBtn.addEventListener('click', async () => {
 
         washBtn.innerHTML = '<span class="btn-icon">🚀</span> Wash Video';
         washBtn.disabled = true;
+        setProcessStepState('finalize', 'complete');
+        completeProcessOverlay();
 
     } catch (error) {
         console.error('Wash error:', error);
@@ -271,6 +356,7 @@ washBtn.addEventListener('click', async () => {
         alert('Error: ' + error.message);
         washBtn.innerHTML = '<span class="btn-icon">🚀</span> Wash Video';
         washBtn.disabled = false;
+        hideProcessOverlay();
     }
 });
 
@@ -333,5 +419,134 @@ function formatFileSize(bytes) {
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+function resetMetadataState() {
+    pendingBeforeMetadata = null;
+    pendingAfterMetadata = null;
+    if (metadataBefore) metadataBefore.innerHTML = '';
+    if (metadataAfter) metadataAfter.innerHTML = '';
+}
+
+function updateMetadataVisibility() {
+    if (!metadataComparison) return;
+
+    if (metadataUnlocked) {
+        if (metadataLock) metadataLock.style.display = 'none';
+        if (metadataContent) metadataContent.style.display = 'grid';
+        if (pendingBeforeMetadata && metadataBefore) {
+            displayMetadata(pendingBeforeMetadata, metadataBefore);
+        }
+        if (pendingAfterMetadata && metadataAfter) {
+            displayMetadata(pendingAfterMetadata, metadataAfter);
+        }
+    } else {
+        if (metadataLock) metadataLock.style.display = 'flex';
+        if (metadataContent) metadataContent.style.display = 'none';
+        if (metadataBefore) metadataBefore.innerHTML = '';
+        if (metadataAfter) metadataAfter.innerHTML = '';
+    }
+}
+
+async function handleMetadataUnlock() {
+    if (!metadataLockConfig.enabled || !metadataLockConfig.codeHash) {
+        metadataUnlocked = true;
+        updateMetadataVisibility();
+        return;
+    }
+
+    const enteredCode = (metadataCodeInput?.value || '').trim();
+    if (!enteredCode) {
+        showMetadataError('Enter the access code to continue.');
+        return;
+    }
+
+    try {
+        const enteredHash = await hashText(enteredCode);
+        if (enteredHash === metadataLockConfig.codeHash) {
+            metadataUnlocked = true;
+            showMetadataError('');
+            if (metadataCodeInput) metadataCodeInput.value = '';
+            updateMetadataVisibility();
+        } else {
+            showMetadataError('Incorrect code. Please try again.');
+        }
+    } catch (err) {
+        console.error('Metadata unlock error:', err);
+        showMetadataError('Unable to verify code. Please try again.');
+    }
+}
+
+function showMetadataError(message) {
+    if (!metadataError) return;
+    if (message) {
+        metadataError.textContent = message;
+        metadataError.style.display = 'block';
+    } else {
+        metadataError.textContent = '';
+        metadataError.style.display = 'none';
+    }
+}
+
+async function hashText(text) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(text);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function startProcessOverlay(type) {
+    const config = PROCESS_CONFIG[type];
+    if (!processOverlay || !config) {
+        return;
+    }
+    currentProcessType = type;
+    if (processTitle) processTitle.textContent = config.title;
+    if (processSubtitle) processSubtitle.textContent = config.subtitle;
+    if (processSteps) {
+        processSteps.innerHTML = '';
+        config.steps.forEach((step, index) => {
+            const stepEl = document.createElement('div');
+            stepEl.className = 'process-step';
+            stepEl.dataset.stepId = step.id;
+            stepEl.dataset.state = index === 0 ? 'active' : 'pending';
+            stepEl.innerHTML = `
+                <div class="process-step-icon"></div>
+                <div class="process-step-text">
+                    <h4>${step.title}</h4>
+                    <p>${step.description}</p>
+                </div>
+            `;
+            processSteps.appendChild(stepEl);
+        });
+    }
+    processOverlay.style.display = 'flex';
+    document.body.classList.add('process-overlay-active');
+}
+
+function setProcessStepState(stepId, state) {
+    if (!processSteps) return;
+    const step = processSteps.querySelector(`[data-step-id="${stepId}"]`);
+    if (step) {
+        step.dataset.state = state;
+    }
+}
+
+function completeProcessOverlay() {
+    if (!processOverlay || processOverlay.style.display === 'none') return;
+    setTimeout(() => {
+        hideProcessOverlay();
+    }, 300);
+}
+
+function hideProcessOverlay() {
+    if (!processOverlay) return;
+    processOverlay.style.display = 'none';
+    document.body.classList.remove('process-overlay-active');
+    currentProcessType = null;
+    if (processSteps) {
+        processSteps.innerHTML = '';
+    }
 }
 
