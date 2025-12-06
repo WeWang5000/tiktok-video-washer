@@ -158,9 +158,7 @@ async function handleFile(file) {
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable) {
                     const percentComplete = Math.round((e.loaded / e.total) * 100);
-                    if (uploadProgress) {
-                        uploadProgress.textContent = percentComplete + '%';
-                    }
+                    setTextContent(uploadProgress, percentComplete + '%');
                 }
             });
 
@@ -206,8 +204,8 @@ async function handleFile(file) {
         hideUploadLoading();
 
         // Display file info
-        fileName.textContent = data.filename;
-        fileSize.textContent = formatFileSize(data.file_size);
+        setTextContent(fileName, data.filename);
+        setTextContent(fileSize, formatFileSize(data.file_size));
         fileInfo.style.display = 'block';
 
         setProcessStepState('uploading', 'complete');
@@ -259,9 +257,7 @@ function showUploadLoading() {
         uploadBox.style.pointerEvents = 'none';
     }
     
-    if (uploadProgress) {
-        uploadProgress.textContent = '0%';
-    }
+    setTextContent(uploadProgress, '0%');
 }
 
 function hideUploadLoading() {
@@ -331,7 +327,7 @@ washBtn.addEventListener('click', async () => {
         setProcessStepState('finalize', 'active');
 
         // Update file size
-        fileSize.textContent = formatFileSize(data.file_size);
+        setTextContent(fileSize, formatFileSize(data.file_size));
 
         // Show success banner
         successBanner.style.display = 'flex';
@@ -548,5 +544,13 @@ function hideProcessOverlay() {
     if (processSteps) {
         processSteps.innerHTML = '';
     }
+}
+
+function setTextContent(element, value) {
+    if (!element) {
+        console.warn('Missing element for text assignment. Skipping update.');
+        return;
+    }
+    element.textContent = value;
 }
 
